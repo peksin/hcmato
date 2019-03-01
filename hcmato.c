@@ -21,6 +21,7 @@ TODO:
 Collectibles and snek behaviour
 Divide subroutines to modules
 Sound system
+Check if the global variables for player pixel actually need to be global
 
 NEXT LEVEL TODO:
 Moving collectibles?
@@ -610,6 +611,8 @@ void draw_player(void)
 	int done;
 	long next_time;
 	int keypress;
+	int rand_x;
+	int rand_y;
 	done = 0; // flag for done
 	next_time = get_tick() + 1;  // a timer
 
@@ -702,7 +705,10 @@ void draw_player(void)
 
 			next_time = get_tick();
 			}
-		
+		// draw a random pixel and store its location
+		rand_x = random(screen_width);
+		rand_y = random(screen_height);
+		draw_pixel(rand_x, rand_y, random(256));
 
 
 		// draw, as fast as we can
@@ -725,45 +731,10 @@ void main(void)
 
 	get_key();
 
-	//init_keyboard();
-
 	init_video_mode();
 
+	// main game loop is this one
 	draw_player();
-
-/*
-	while ( !done )
-		{
-		// drawing code
-		draw_player();				// draw player pixel
-		//bounce_pixel1();			// bounce one pixel around
-		if ( check_input(&event) )
-			{
-			switch ( event.type )		// Switch case in case I want to add
-										// joystick support etc in the future
-				{
-				case KEY:
-
-					if ( event.data1 == 2 ) // scancode for ESC is 1
-						done = 1;
-					break;
-				}
-			}
-
-		}
-
-	/*
-	// draw random pixels
-	for (i = 0; i < 500; i++)
-	{
-		draw_pixel(random(screen_width), random(screen_height), random(256));
-		update_buffer();
-	}
-	
-
-	deinit_keyboard();
-
-	*/
 
 	leave_mode13h();
 	farfree(off_screen);

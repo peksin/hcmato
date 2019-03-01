@@ -18,7 +18,7 @@ back to this project later on.
 Compiled inside DOSBox with Borland Turbo C++ 3.0
 
 TODO:
-Control system with keyboard
+Collectibles and snek behaviour
 Divide subroutines to modules
 Sound system
 
@@ -39,25 +39,24 @@ Port to SDL or something similar?
 #include <stdlib.h>
 #include <dos.h>
 
-#define ESC 27
 #define INPUT_STATUS_0 0x3da
 
 // BIOS data area pointer to incrementing unsigned long integer
 // We'll use this as a timer for animations etc
 #define TICKS (*(volatile unsigned long far *)(0x0040006CL))
 
-
-// this MUST be 256 (apparently), using BYTE roll-over for q code
-// #define NUM_SCAN_QUE 256
-
 #define BYTE unsigned char
 
+// codes for the keys used to control the player pixel
+enum
+{
+	ESC = 27,
+	ARROW_UP = 256 + 72,
+	ARROW_DOWN = 256 + 80,
+	ARROW_LEFT = 256 + 75,
+	ARROW_RIGHT = 256 + 77
+};
 
-// #define EVENT_MASK   31   /* the logical OR of the 5 above vars */
-/*
-#define KEY_UP_MASK   128
-#define KEY_ALL_MASK 127
-*/
 
 
 
@@ -73,60 +72,6 @@ int screen_width, screen_height;
 unsigned int screen_size;
 
 int old_mode;					// old video mode before we change it
-
-
-/* the interrupt keyword causes the compiler to save all the registers before the 
-function is called, and restore them on exit. It also makes the function return via a IRET. */
-/*
-static void interrupt (far *oldkb)(void);   /* BIOS keyboard handler */
-
-
-// Q code
-/*
-BYTE gb_scan;
-BYTE gb_scan_q[NUM_SCAN_QUE];
-BYTE gb_scan_head;
-BYTE gb_scan_tail;
-*/
-// stuff for the combined input queue
-/*
-enum input_types 
-	{
-	KEY,
-	MOUSE,
-	JOY
-	};
-
-enum sub_input_types 
-	{
-	M_MOVE,
-	M_R_BUT_DOWN,
-	M_R_BUT_UP,
-	M_L_BUT_DOWN,
-	M_L_BUT_UP,
-	J_MOVE,
-	J_BUTTON0,
-	J_BUTTON1,
-	KEY_UP,
-	KEY_DOWN
-	};
-*/
-/*
-typedef struct
-	{
-	int type, sub_type, x, y;
-	int data1, data2;
-	}
-event_t;
-
-
-#define MAX_INPUT 30
-
-event_t in[MAX_INPUT];
-int i_head=0;
-int i_tail=0;
-*/
-
 
 // global variables for player pixel for... reasons?
 int play_x = 150, play_y = 90, play_dx = 0, play_dy = -1;
@@ -144,7 +89,6 @@ unsigned long get_tick(void)
 {
 	return (TICKS);
 }
-
 
 /*
 =================================================================================
@@ -553,6 +497,25 @@ int get_key(void)
 }
 
 /*
+===============================================================================
+Get code
+Get a keycode for keypress
+===============================================================================
+*/
+
+int get_code (void)
+{
+  int ch = getch();
+
+  if ( ch == 0 || ch == 224 )
+    {
+		ch = 256 + getch();
+	}
+
+  return ch;
+}
+
+/*
 ===================================================================================
 Make a pixel bounce around without leaving a trail
 
@@ -636,192 +599,9 @@ void bounce_pixel1(void)
 
 /*
 ===================================================================================
-Input handler
-Invoked by the hardware keyboard interrupt
-Ques up the raw scan codes
-Stuff raw scan codes into the array gb_scan_q[]
-==================================================================================
-*/
-/*
-void interrupt get_scan(void)
-{ */
-
-   /* read the raw scan code from the keyboard */
-   /*
-   asm   cli
-
-   asm   {
-
- //        in    al, 060h       /* read scan code */
- //        mov   gb_scan, al
- //        in    al, 061h       /* read keyboard status */
- //        mov   bl, al
- //        or    al, 080h
- //        out   061h, al       /* set bit 7 and write */
- //        mov   al, bl
- //        out   061h, al       /* write again, bit 7 clear */
-//
- //        mov   al, 020h       /* reset PIC */
- //        out   020h, al
-//
- //        /* end of re-set code */
-//
- //        sti
- //        }
-//
-// save the raw scan code in a 256 byte buffer
-/*
-   *(gb_scan_q+gb_scan_tail)=gb_scan;
-   ++gb_scan_tail;
-   */
-  /*
-}
-*/
-/*
-===========================================================================
-save the old int9 ISR vector, and install our own
-Init Keyboard
-===========================================================================
-*/
-/*
-void init_keyboard(void)
-{
-   BYTE far *bios_key_state;
-
-   /* save old BIOS key board handler */
-   /*
-   oldkb = getvect(9);
-
-   // turn off num-lock via BIOS 
-   bios_key_state = MK_FP(0x040, 0x017);
-   *bios_key_state&=(~(32 | 64));     // toggle off caps lock and
-                                      // num lock bits in the BIOS variable
-   oldkb();      // call BIOS key handler to change keyboard lights
-
-   gb_scan_head = 0;
-   gb_scan_tail = 0;
-   gb_scan = 0;
-
-   /* install our own handler */
-   /*
-   setvect(9, get_scan);
-   */
-
-// }
-
-
-/* 
-===============================================================================
-restore the bios keyboard handler
-De-init keyboard
-===============================================================================
-*/
-/*
-void deinit_keyboard(void)
-{
-   setvect(9, oldkb);
-}
-*/
-
-/*
-===================================================================================
-Event queue
-==================================================================================
-*/
-
-// add an event to out generic input queue
-/* ---------------------- add_input() ------------------- October 8,1998 */
-
-/*
-void add_input(event_t *event)
-{
-
-	in[i_tail].type=event->type;
-	in[i_tail].sub_type=event->sub_type;
-	in[i_tail].x=event->x;
-	in[i_tail].y=event->y;
-	in[i_tail].data1=event->data1;
-	in[i_tail].data2=event->data2;
-
-	i_tail++;
-	if ( i_tail == MAX_INPUT )
-		i_tail=0;
-   if ( i_tail == i_head )
-      {
-      i_head++;
-      if ( i_head == MAX_INPUT )
-         i_head=0;
-      }
-
-}
-
-// see if there  any user generated input waiting for processing
-int check_input(event_t *event)
-{
-	int is_event=0;
-	event_t new_event;
-	int dx, dy;
-
-	// place any pending keyboard events in queue
-	// in a real game you might want to do some processing to
-	// the raw scan codes to convert them to ASCI or an other
-	// more convenient format
-	while ( gb_scan_head != gb_scan_tail )
-		{
-		new_event.type=KEY;
-		new_event.data1=gb_scan_q[gb_scan_head];
-
-		// 0xe0 indicates a key from the SECOND keypad, real code will
-		// follow
-		if ( new_event.data1 == 0xe0 )
-			{
-			gb_scan_head++;
-			continue;
-			}
-
-		gb_scan_head++;
-
-		if ( new_event.data1 & KEY_UP_MASK )
-			new_event.sub_type=KEY_UP;
-		else
-			new_event.sub_type=KEY_DOWN;
-
-		new_event.data1&=KEY_ALL_MASK;  // clear high bit
-
-		// this is where you would convert the raw scan code to ascii
-		// and do other high level processing if required
-		// eg  new_event.data2=get_ascii(new_event.data1);
-
-		add_input(&new_event);
-		}
-
-	// check if there are any pending events, and return the oldest one
-
-	if ( i_head != i_tail )
-		{
-		is_event=1;
-
-		event->type=in[i_head].type;
-		event->sub_type=in[i_head].sub_type;
-		event->x=in[i_head].x;
-		event->y=in[i_head].y;
-		event->data1=in[i_head].data1;
-		event->data2=in[i_head].data2;
-
-		i_head++;
-		if ( i_head == MAX_INPUT )
-			i_head=0;
-		}
-
-	return is_event;
-}
-*/
-
-
-/*
-===================================================================================
 Draw the player pixel
-This was made from the bounce_pixel function
+This was made from the bounce_pixel function and it turned out as the main game
+loop it seems...
 ==================================================================================
 */
 
@@ -842,40 +622,40 @@ void draw_player(void)
 			{
 				if(kbhit()) // check for user input
 				{
-					switch(get_key())
+					switch(get_code())
 					{
-						case 65: // key up
-							if(play_dx != 0)
-							{
-								play_dy += 1;
-								play_dx = 0;
-							}
-							break;
-						case 66: // key down
+						case ARROW_UP: // key up
 							if(play_dx != 0)
 							{
 								play_dy += -1;
 								play_dx = 0;
 							}
 							break;
-						case 67: // key right
+						case ARROW_DOWN: // key down
+							if(play_dx != 0)
+							{
+								play_dy += 1;
+								play_dx = 0;
+							}
+							break;
+						case ARROW_RIGHT: // key right
 							if(play_dy != 0)
 							{
 								play_dx += 1;
 								play_dy = 0;
 							}
 							break;
-						case 68: // key left
+						case ARROW_LEFT: // key left
 							if(play_dy != 0)
 							{
 								play_dx += -1;
 								play_dy = 0;
 							}
 							break;
-						//case ESC:							
-						//	farfree(off_screen);
-						//	leave_mode13h();
-						//	exit(1);	
+						case ESC:							
+							farfree(off_screen);
+							leave_mode13h();
+							exit(1);	
 						default: // not pressing anything etc
 							break;
 					}
@@ -924,7 +704,7 @@ void draw_player(void)
 			}
 		
 
-		get_key();
+
 		// draw, as fast as we can
 		draw_pixel(play_x, play_y, 5);
 		update_buffer();

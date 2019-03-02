@@ -39,6 +39,7 @@ Port to SDL or something similar?
 #include <string.h>
 #include <stdlib.h>
 #include <dos.h>
+#include <time.h>
 
 #define INPUT_STATUS_0 0x3da
 
@@ -73,6 +74,7 @@ int screen_width, screen_height;
 unsigned int screen_size;
 
 int old_mode;					// old video mode before we change it
+
 
 /*
 ===========================================================================
@@ -218,6 +220,8 @@ the first line it is easy, it is just x pixels from the start. To draw on a
 line other than the first line we have to move down to the yth line. How do 
 we do that? Each line is 320 pixels long. For each y we must move 320 pixels.
 Therefore the calculation of a pixel's position is:
+
+off_screen = pointer to the off screen buffer
 
 Offset = y * screen_width + x; (screen width being 320 in this case)
 
@@ -612,6 +616,27 @@ void bounce_pixel1(void)
 
 /*
 ===================================================================================
+Random number generator from stack overflow
+Turns out random() isn't actually random if you don't seed it first
+Returns a random number between 0 and limit
+==================================================================================
+*/
+/*
+int rand_lim(int limit) 
+{
+    int divisor = RAND_MAX/(limit+1);
+    int result;
+
+    do 
+	{ 
+        result = rand() / divisor;
+    } while (result > limit);
+
+    return result;
+}
+*/
+/*
+===================================================================================
 Draw the player pixel
 This was made from the bounce_pixel function and it turned into the main game
 loop apparently...
@@ -623,8 +648,11 @@ void draw_player(void)
 	int done;
 	long next_time;
 	int keypress;
-	int rand_x;
-	int rand_y;
+
+	int collect_x;				// collectible location x
+	int collect_y;				// collectible location y
+	int isCollectible = 0;		// is there a collectible already on screen?
+
 	done = 0; // flag for done
 	next_time = get_tick() + 1;  // a timer
 
@@ -632,9 +660,16 @@ void draw_player(void)
 		{
 		// move at a steady speed on all computers
 		// if not enough time has NOT passed, redraw the 
-		// screen with out moving
+		// screen without moving
 		if ( get_tick() >= next_time )
 			{
+				// detect collision with player lead pixel and collectible
+				if(play_x == collect_x && play_y == collect_y)
+				{
+					// collectible is destroyed, make a new one on the next loop
+					isCollectible = 0;
+				}
+
 				if(kbhit()) // check for user input
 				{
 					switch(get_code())
@@ -675,52 +710,60 @@ void draw_player(void)
 							break;
 					}
 				}
-			// move
-			play_x += play_dx;
-			play_y += play_dy;
+				// move
+				play_x += play_dx;
+				play_y += play_dy;
 
-		// remove the old pixel (by drawing a black pixel in its stead mehmehmeh)
-		// this is done to remove the trailing
-		// this has to be done before border collision or bounce
-		// checks so that it will also remove pixels from the bounce points along
-		// the border
-		draw_pixel(play_x - play_dx, play_y - play_dy, 0);
+				// remove the old pixel (by drawing a black pixel in its stead mehmehmeh)
+				// this is done to remove the trailing
+				// this has to be done before border collision or bounce
+				// checks so that it will also remove pixels from the bounce points along
+				// the border
+				draw_pixel(play_x - play_dx, play_y - play_dy, 0);
 
-			// make the player pixel wrap to the other side
-			// left border
-			if ( play_x < 1 )
-				{
-				play_x = 319;
-				//play_dx =- play_dx; // move in other direction 
-				}
-	
-			// right border	
-			if ( play_x > 319 )
-				{
-				play_x = 0;
-				//play_dx =- play_dx; // move in other direction 
-				}
-			
-			// top border
-			if ( play_y < 1 )
-				{
-				play_y = 199;
-				//play_dy =- play_dy;   // move in other direction 
-				}
-			// bottom border
-			if ( play_y > 199 )
-				{
-				play_y = 0;
-				//play_dy =- play_dy;   // move in other direction 
-				}
+				// make the player pixel wrap to the other side
+				// left border
+				if ( play_x < 1 )
+					{
+						play_x = 319;					 
+					}
+
+				// right border	
+				if ( play_x > 319 )
+					{
+						play_x = 0;					 
+					}
+
+				// top border
+				if ( play_y < 1 )
+					{
+						play_y = 199;					 
+					}
+				// bottom border
+				if ( play_y > 199 )
+					{
+						play_y = 0;					 
+					}
 
 
-			next_time = get_tick();
+				next_time = get_tick();
 			}
-		// draw a random pixel and store its location
-		rand_x = random(screen_width);
-		rand_y = random(screen_height);
-		draw_pixel(rand_x, rand_y, random(256));
+		
+		if(!isCollectible)
+		{
+			// draw a collectible in a random location and store its location
+			collect_x = random(screen_width);
+			collect_y = random(screen_height);
+			draw_pixel(collect_x, collect_y, random(256));
+
+			// now there's a collectible so don't draw any new ones
+			isCollectible = 1;		
+		}
+
+		// TODO: retrieve location of that collectible
+		/* if <pixel location on memory> != 0(black) -> */
+		
+
 
 
 		// draw, as fast as we can
@@ -737,6 +780,8 @@ Main loop
 
 void main(void)
 {
+	srand(time(NULL)); 			// seed the random generator
+
 	printf("Welcome to Pekka's VGA experiment!\n");
 	printf("All lefts reversed and so forth\n");
 	printf("Press ESC to exit, or press any other key to continue\n");

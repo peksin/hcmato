@@ -18,10 +18,10 @@ back to this project later on.
 Compiled inside DOSBox with Borland Turbo C++ 3.0
 
 TODO:
-Collectibles and snek behaviour
+Snek behaviour
 Divide subroutines to modules
 Sound system
-Check if the global variables for player pixel actually need to be global
+Check for latency
 
 NEXT LEVEL TODO:
 Moving collectibles?
@@ -59,7 +59,14 @@ enum
 	ARROW_RIGHT = 256 + 77
 };
 
+// struct for pixel location and movement speed
+struct pixel
+{
+	int x, y, dx, dy;
+};
 
+// snek snek[0] and snek declarations
+struct pixel *snek;
 
 
 /*
@@ -78,25 +85,18 @@ int old_mode;					// old video mode before we change it
 
 /*
 ===========================================================================
-Global player pixel variables (do I really need these here?)
+Global player-related pixel declarations
 ===========================================================================
 */
 
-// player's lead pixel location
-int play_x = 150, play_y = 90, play_dx = 0, play_dy = -1;
 
-// player's tail pixel location
-int tail_x = 150, tail_y = 90, tail_dx = 0, tail_dy = -1;
-
-// player snek length
-int play_length = 5;
 
 /*
 =================================================================================
 Get TICK
 This returns a number that increases by one 18 times a second so it is useful
-to us as a timer to bind animation speed to something else than CPU clock speed
-*memories of Bethesda tying their physics engine to FPS*
+to us as a timer to bind animation speed to something else other than CPU clock 
+speed *memories of Bethesda tying their physics engine to FPS*
 =================================================================================
 */
 
@@ -229,8 +229,6 @@ y * screen_width + x	this gives us the offset from the start of the buffer to
 the position of the pixel at (x,y)
 *(off_screen + offset) sets the value at offset to colour.
 
-Note that '*' means both 'de-reference pointer' and multiplication in c. The
-compiler can tell which meaning is to be used from the context of the code.
 Then update_buffer() would have to be called to make the pixel actually appear 
 on the CRT screen.
 To get the value of a pixel we just return the value in off_screen at the offset
@@ -266,229 +264,8 @@ void horz_line(int x, int y, int length, int colour)
 	unsigned char far *p;
 
 	p = off_screen + y * screen_width + x;	// make p point to the start of the
-																					// line
-	_fmemset(p, colour, length);								// fill in the line
-}
-
-/*
-===============================================================================
-Draw a vertical line
-
-For vertical lines we have to move down one line each pixel. This is the same
-as moving the width of the screen into the off screen buffer.
-
-The pixel at (3, 0) is at offset:
-Off set = y*320 + x
-Off set = 0*320 + 3
-Off set = 3
-
-
-The pixel  at (3,1) is at offset:
-Off set = y*320 + x
-Off set = 1*320 + 3
-Off set = 323
-
-As you can see, as we move down one row the offset will increase by the width
-of the screen.
-===============================================================================
-*/
-
-void ver_line(int x, int y, int len, int colour)
-{
-	unsigned char far *p;
-
-	p = off_screen + y * screen_width + x;	// make p point to the start of the line
-	while (len--)														// repeat for entire line length
-	{
-		*p = colour;													// set one pixel
-		p += screen_width;										// move down one row
-	}
-}
-
-/*
-===============================================================================
-Draw a filled rectangle
-Filled rectangles are drawn by drawing horizontal lines to fill the rectangle.
-The off set of the first line is calculated, a horizontal line drawn, then we 
-move down one row and repeat. 
-===============================================================================
-*/
-
-void rect_fill(int x, int y, int width, int height, int colour)
-{
-	unsigned char far *p;
-
-	p = off_screen + y * screen_width + x;	// make p point to the start of the line
-	while (height--)									// repeat for the entire line height
-	{
-		_fmemset(p, colour, width);			// set one line
-		p += screen_width;							// move down one row
-	}
-}
-
-/*
-===============================================================================
-Draw arbitrary lines
-The obvious way to draw an arbitrary line is to code the equation of a line. 
-This works, but is quite slow in practice. In 1965 J. E. Bresenham presented a 
-much faster way to draw lines using discrete pixels. Instead of calculating the 
-position of each pixel from the equation of a line, the line is drawn by moving 
-in one direction at a constant rate, and moving in the other in proportion to the 
-slope of the line. For example, a line that starts at (0,0) and goes to (200, 10) 
-you draw a pixel at (0,0), move x to the left then check if y should be increased 
-using pre-calculated variables. A bit of algebra is required to calculate these 
-variables, but it turns out it is a very simple and quick operation.
-
-The c code presents a straight forward implementation of Bresenham's line 
-drawing algorithm. There are faster ways to code it (in assembler this algorithm 
-can be very optimized), and there are now faster algorithms, e.g. "line slicing", 
-but as hardware does more and more for us, it becomes less important.
-
-Note: for unsigned integers x<<1 is the same as x*2, and x>>1 is the same as x/2. 
-===============================================================================
-*/
-
-void line(int x0, int y0, int x1, int y1, int colour)
-{
-	int  inc1, inc2, i;
-	int cnt, y_adj, dy, dx, x_adj;
-	unsigned char far *p;
-
-	if ( x0 == x1 )
-		{
-		// vertical line
-		if ( y0 > y1 )
-			{
-			i = y0;
-			y0 = y1;
-			y1 = i;
-			}
-
-		p = off_screen + y0 * screen_width + x0;
-		i = y1 - y0 + 1;
-		while ( i-- )
-			{
-			*p = colour;
-			p += screen_width;
-			}
-		}
-	else
-		{
-		if ( y0 == y1 )
-			{
-			// horizontal line
-			if ( x0 > x1 )
-				{
-				i=x0;
-				x0=x1;
-				x1=i;
-				}
-			p = off_screen + y0 * screen_width + x0;
-			i = x1 - x0 + 1;
-			_fmemset(p, colour, i);
-			}
-		else
-			{
-			// general line --------------------------------------
-			dy = y1 - y0; 
-			dx  =x1 - x0; 
-			// is it a shallow, or steep line?
-			if ( abs(dy) < abs(dx) )
-				{
-				// lo slope, shallow line
-				// we always want to draw from left to right
-				if ( x0 > x1 )
-					{
-					// swap x's, and y's
-					i = x0;
-					x0 = x1;
-					x1 = i;
-					i = y0;
-					y0 = y1;
-					y1 = i;
-					}
-				dy = y1 - y0;  // dy is used to calculate the increments
-				dx = x1 - x0;  // dx is line length
-				if ( dy < 0 )
-					{
-					// going up the screen
-					dy =- dy;
-					y_adj =- screen_width;
-					}
-				else
-					y_adj = screen_width;	 // going down
-
-				// calulate the increments
-				inc1 = dy << 1;
-				inc2 = (dy - dx) << 1;
-				cnt = (dy << 1) - dx;
-
-				// set p to start pixel
-				p = off_screen + y0 * screen_width + x0;
-				dx++;
-				while ( dx-- )  // for the length of the line
-					{
-					*p++ = colour;  
-					// set one pixel, move right one pixel
-
-					if ( cnt >= 0 ) // is it time to adjust y?
-						{
-						cnt += inc2;
-						p += y_adj;
-						}
-					else
-						cnt += inc1;
-					}
-				}
-			else
-				{
-				// hi slope - like lo slope turned on its side
-				// always draw top to bottom
-				if ( y0 > y1 )
-					{
-					// swap x's, and y's
-					i = x0;
-					x0 = x1;
-					x1 = i;
-					i = y0;
-					y0 = y1;
-					y1 = i;
-					}
-
-				dy = y1 - y0;  // dy is line length
-				dx = x1 - x0;  // dx is used to calculate incr's
-
-				if ( dx < 0)
-					{
-					dx =- dx;
-					x_adj =- 1;  // moving left
-					}
-				else
-					x_adj = 1;   // moving right
-
-				inc1=dx << 1;
-				inc2 = (dx - dy) << 1;
-				cnt=(dx << 1) - dy;
-
-				// set p to first pixel position
-				p=off_screen + y0 * screen_width + x0;
-				dy++;
-				while ( dy-- )  // for height of line
-					{
-					*p = colour;   // set one pixel
-					p += screen_width;  // move down one pixel
-
-					if ( cnt >= 0 )  // is it time to move x?
-						{
-						cnt += inc2;
-						p += x_adj;
-						}
-					else
-						cnt += inc1;
-					}
-				}
-			}
-		}
+											// line
+	_fmemset(p, colour, length);			// fill in the line
 }
 
 /*
@@ -534,107 +311,85 @@ int get_code (void)
 
 /*
 ===================================================================================
-Make a pixel bounce around without leaving a trail
-
-TODO: figure out why it leaves a trail when bouncing from a border
-==================================================================================
+Check if snek needs to be wrapped to the other side of the screen
+===================================================================================
 */
 
-void bounce_pixel1(void)
+void check_wrap(void)
 {
-	int done;
-	int x, y, dx, dy;
-	long next_time;
-
-	x = 10;  // current x position
-	y = 20;  // current y position
-	done = 0; // flag for done
-	dx = 1;   // amount to move in x direction
-	dy = 1;   // amount to move in y direction
-	next_time = get_tick() + 1;  // a timer
-
-	while ( !done )
+	// make the player pixel wrap to the other side if needed
+	// left border
+	if ( snek[0].x < 1 )
 		{
-		// move at a steady speed on all computers
-		// if not enough time has NOT passed, redraw the 
-		// screen with out moving
-		if ( get_tick() >= next_time )
-			{
-			// move
-			x += dx;
-			y += dy;
-
-		// remove the old pixel (by drawing a black pixel in its stead mehmehmeh)
-		// this is done to remove the trailing
-		// this has to be done before bounce checks so that it will also remove
-		// pixels from the bounce points along the border
-		draw_pixel(x - dx, y - dy, 0);
-
-			// check for bouncing
-			// left border
-			if ( x < 0 )
-				{
-				x = 0;
-				dx =- dx;  // move in other direction
-				}
+			snek[0].x = 319;
+		}					 
 	
-			// right border	
-			if ( x > 319 )
-				{
-				x = 319;
-				dx =- dx; // move in other direction 
-				}
-			
-			// top border
-			if ( y < 0 )
-				{
-				y = 0;
-				dy =- dy;   // move in other direction 
-				}
-			// bottom border
-			if ( y > 199 )
-				{
-				y = 199;
-				dy =- dy;   // move in other direction 
-				}
-
-
-			next_time = get_tick();
-			}
-
-		// draw, as fast as we can
-		draw_pixel(x, y, 5);
-		update_buffer();
-
-		// check for user input
-		if ( kbhit() )
-			if ( getch() == ESC )
-				done = 1;
+	// right border	
+	if ( snek[0].x > 319 )
+		{
+			snek[0].x = 0;	
+		}				 
+	
+	// top border
+	if ( snek[0].y < 1 )
+		{
+		
+			snek[0].y = 199;					 
 		}
-
+	// bottom border
+	if ( snek[0].y > 199 )
+		{
+			snek[0].y = 0;					 
+		}
 }
 
 /*
 ===================================================================================
-Random number generator from stack overflow
-Turns out random() isn't actually random if you don't seed it first
-Returns a random number between 0 and limit
-==================================================================================
+Check if the key that is pressed should do something
+===================================================================================
 */
-/*
-int rand_lim(int limit) 
+
+void check_key(void)
 {
-    int divisor = RAND_MAX/(limit+1);
-    int result;
-
-    do 
-	{ 
-        result = rand() / divisor;
-    } while (result > limit);
-
-    return result;
+	switch(get_code())
+		{
+			case ARROW_UP: // key up
+				if(snek[0].dx != 0)
+				{
+					snek[0].dy += -1;
+					snek[0].dx = 0;
+				}
+				break;
+			case ARROW_DOWN: // key down
+				if(snek[0].dx != 0)
+				{
+					snek[0].dy += 1;
+					snek[0].dx = 0;
+				}
+				break;
+			case ARROW_RIGHT: // key right
+				if(snek[0].dy != 0)
+				{
+					snek[0].dx += 1;
+					snek[0].dy = 0;
+				}
+				break;
+			case ARROW_LEFT: // key left
+				if(snek[0].dy != 0)
+				{
+					snek[0].dx += -1;
+					snek[0].dy = 0;
+				}
+				break;
+			case ESC:							
+				farfree(off_screen);
+				leave_mode13h();
+				exit(1);	
+			default: // not pressing anything etc
+				break;
+		}
 }
-*/
+
 /*
 ===================================================================================
 Draw the player pixel
@@ -648,10 +403,25 @@ void draw_player(void)
 	int done;
 	long next_time;
 	int keypress;
+	int snek_length = 5;
+
+	// for loop variables
+	int i; 		
+	int j;
+	int k;
 
 	int collect_x;				// collectible location x
 	int collect_y;				// collectible location y
 	int isCollectible = 0;		// is there a collectible already on screen?
+
+	// player's lead pixel location
+	snek[0].x = 150, snek[0].y = 90, snek[0].dx = 0, snek[0].dy = -1;
+
+	// KOKEITA
+	snek[1].x = 150, snek[1].y = 90, snek[1].dx = 0, snek[1].dy = -1;
+	snek[2].x = 150, snek[2].y = 91, snek[2].dx = 0, snek[2].dy = -1;
+	snek[3].x = 150, snek[3].y = 92, snek[3].dx = 0, snek[3].dy = -1;
+	snek[4].x = 150, snek[4].y = 93, snek[4].dx = 0, snek[4].dy = -1;
 
 	done = 0; // flag for done
 	next_time = get_tick() + 1;  // a timer
@@ -663,88 +433,78 @@ void draw_player(void)
 		// screen without moving
 		if ( get_tick() >= next_time )
 			{
+				// draw snek tail
+			/*	for(k = 1; k > snek_length; k++)
+				{	
+					snek[k].x = snek[0].x + 1;
+					snek[k].y = snek[0].y + 1; 
+					snek[k].dx = snek[0].dx; 
+					snek[k].dy = snek[0].dy;
+				} */
 				// detect collision with player lead pixel and collectible
-				if(play_x == collect_x && play_y == collect_y)
+				if(snek[0].x == collect_x && snek[0].y == collect_y)
 				{
 					// collectible is destroyed, make a new one on the next loop
 					isCollectible = 0;
+
+					snek_length++;
 				}
 
-				if(kbhit()) // check for user input
+				// check for user input
+				if(kbhit())
 				{
-					switch(get_code())
-					{
-						case ARROW_UP: // key up
-							if(play_dx != 0)
-							{
-								play_dy += -1;
-								play_dx = 0;
-							}
-							break;
-						case ARROW_DOWN: // key down
-							if(play_dx != 0)
-							{
-								play_dy += 1;
-								play_dx = 0;
-							}
-							break;
-						case ARROW_RIGHT: // key right
-							if(play_dy != 0)
-							{
-								play_dx += 1;
-								play_dy = 0;
-							}
-							break;
-						case ARROW_LEFT: // key left
-							if(play_dy != 0)
-							{
-								play_dx += -1;
-								play_dy = 0;
-							}
-							break;
-						case ESC:							
-							farfree(off_screen);
-							leave_mode13h();
-							exit(1);	
-						default: // not pressing anything etc
-							break;
-					}
+					check_key();
 				}
-				// move
-				play_x += play_dx;
-				play_y += play_dy;
 
-				// remove the old pixel (by drawing a black pixel in its stead mehmehmeh)
-				// this is done to remove the trailing
-				// this has to be done before border collision or bounce
-				// checks so that it will also remove pixels from the bounce points along
-				// the border
-				draw_pixel(play_x - play_dx, play_y - play_dy, 0);
+				// collecting a collectible -> this step will be skipped
+				if(isCollectible)
+				{
+					// remove old snek tail IS THIS STILL NEEDED?
+					draw_pixel(snek[snek_length - 1].x, snek[snek_length -1].y, 0);
+				}
+				
+				for(k = snek_length - 1; k > 0; k--)
+				{
+					snek[k].x = snek[k - 1].x;
+					snek[k].y = snek[k - 1].y;
+					snek[k].dx = snek[k - 1].dx;
+					snek[k].dy = snek[k - 1].dy;
+					
 
-				// make the player pixel wrap to the other side
-				// left border
-				if ( play_x < 1 )
-					{
-						play_x = 319;					 
-					}
+					/*
 
-				// right border	
-				if ( play_x > 319 )
-					{
-						play_x = 0;					 
-					}
+					KOKEITA
+					snek[4].x = snek[3].x;
+					snek[4].y = snek[3].y;
+					snek[4].dx = snek[3].dx;
+					snek[4].dy = snek[3].dy;
 
-				// top border
-				if ( play_y < 1 )
-					{
-						play_y = 199;					 
-					}
-				// bottom border
-				if ( play_y > 199 )
-					{
-						play_y = 0;					 
-					}
+					snek[3].x = snek[2].x;
+					snek[3].y = snek[2].y;
+					snek[3].dx = snek[2].dx;
+					snek[3].dy = snek[2].dy;
 
+					snek[2].x = snek[1].x;
+					snek[2].y = snek[1].y;
+					snek[2].dx = snek[1].dx;
+					snek[2].dy = snek[1].dy;				
+
+					snek[1].x = snek[0].x;
+					snek[1].y = snek[0].y;
+					snek[1].dx = snek[0].dx;
+					snek[1].dy = snek[0].dy;
+					*/
+				}
+
+
+
+
+				// move snek[0] of snek
+				snek[0].x += snek[0].dx;
+				snek[0].y += snek[0].dy;
+
+				// check for wrapping
+				check_wrap();
 
 				next_time = get_tick();
 			}
@@ -754,21 +514,19 @@ void draw_player(void)
 			// draw a collectible in a random location and store its location
 			collect_x = random(screen_width);
 			collect_y = random(screen_height);
-			draw_pixel(collect_x, collect_y, random(256));
+			draw_pixel(collect_x, collect_y, 32 + random(48));
 
 			// now there's a collectible so don't draw any new ones
 			isCollectible = 1;		
 		}
 
-		// TODO: retrieve location of that collectible
-		/* if <pixel location on memory> != 0(black) -> */
-		
+		// draw snek
+		for(i = 0; i < snek_length; i++)
+		{
+			draw_pixel(snek[i].x, snek[i].y, 5);
+		}
 
-
-
-		// draw, as fast as we can
-		draw_pixel(play_x, play_y, 5);
-		update_buffer();
+			update_buffer();
 		}
 }
 
@@ -780,6 +538,20 @@ Main loop
 
 void main(void)
 {
+	/*long z;*/
+
+	// allocate memory for the snek. This will be lengthened if necessary
+	snek = malloc((64000) * sizeof(struct pixel));
+
+	// fill the snek array with zeroes 
+	/*for(z = 0; z < 64000; z++)
+	{
+		snek[z].x = 0;
+		snek[z].y = 0;
+	} */
+
+	
+
 	srand(time(NULL)); 			// seed the random generator
 
 	printf("Welcome to Pekka's VGA experiment!\n");
@@ -794,6 +566,9 @@ void main(void)
 	draw_player();
 
 	leave_mode13h();
+
+	// free memory
+	free(snek);
 	farfree(off_screen);
 
 }

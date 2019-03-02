@@ -62,9 +62,9 @@ enum
 
 
 /*
-=================================================================================
+===========================================================================
 Global variables
-=================================================================================
+===========================================================================
 */
 
 unsigned char far *screen;		// pointer to the VGA video memory
@@ -74,8 +74,20 @@ unsigned int screen_size;
 
 int old_mode;					// old video mode before we change it
 
-// global variables for player pixel for... reasons?
+/*
+===========================================================================
+Global player pixel variables (do I really need these here?)
+===========================================================================
+*/
+
+// player's lead pixel location
 int play_x = 150, play_y = 90, play_dx = 0, play_dy = -1;
+
+// player's tail pixel location
+int tail_x = 150, tail_y = 90, tail_dx = 0, tail_dy = -1;
+
+// player snek length
+int play_length = 5;
 
 /*
 =================================================================================
@@ -601,8 +613,8 @@ void bounce_pixel1(void)
 /*
 ===================================================================================
 Draw the player pixel
-This was made from the bounce_pixel function and it turned out as the main game
-loop it seems...
+This was made from the bounce_pixel function and it turned into the main game
+loop apparently...
 ==================================================================================
 */
 

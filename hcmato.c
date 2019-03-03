@@ -18,17 +18,21 @@ back to this project later on.
 Compiled inside DOSBox with Borland Turbo C++ 3.0
 
 TODO:
-Snek behaviour
-Divide subroutines to modules
-Sound system
-Check for latency
+
+-Sanitize snek length input
+-Make the snek multicoloured based on the collectibles
+-Add snek collision with itself
+-Prevent game from drawing collectibles on top of the snek
+
+-Divide subroutines to modules
+-Sound system
+-Check for latency
 
 NEXT LEVEL TODO:
 Moving collectibles?
 Multiplayer?
 Explosion graphics?
 High score -table?
-Dynamic colours?
 Port to SDL or something similar?
 =================================================================================
 */
@@ -49,7 +53,7 @@ Port to SDL or something similar?
 
 #define BYTE unsigned char
 
-// codes for the keys used to control the player pixel
+// codes for the keys used to control the game
 enum
 {
 	ESC = 27,
@@ -62,10 +66,10 @@ enum
 // struct for pixel location and movement speed
 struct pixel
 {
-	int x, y, dx, dy;
+	int x, y, dx, dy, colour;
 };
 
-// snek snek[0] and snek declarations
+// snek declaration
 struct pixel *snek;
 
 
@@ -82,15 +86,8 @@ unsigned int screen_size;
 
 int old_mode;					// old video mode before we change it
 
-
-/*
-===========================================================================
-Global player-related pixel declarations
-===========================================================================
-*/
-
-
-
+int done;						// flag for done
+long int snek_length = 5;		// Length of snek
 /*
 =================================================================================
 Get TICK
@@ -116,7 +113,7 @@ defined by 6 bits of red, blue, and green. Pixel coordinates are always presente
 as a pair of numbers indicating the X and Y position of the pixel. For example, 
 the black pixel above is at location (3,1) Please note that the top left corner 
 is (0,0) NOT (1,1). The bottom right pixel is (319, 199). This linear arrangement
-if video memory is common to most modern video systems. While it is natural to 
+of video memory is common to most modern video systems. While it is natural to 
 think of video memory as a grid like this, it is actually just a long array of
 memory.
 
@@ -125,7 +122,7 @@ Some useful BIOS interrupts:
 0x10      the BIOS video interrupt. 
 0x0C      BIOS func to plot a pixel. 
 0x00      BIOS func to set the video mode. 
-0x13      use to set 256-color mode. 
+0x13      use to set 256-colour mode. 
 0x03      use to set 80x25 text mode. 
 =================================================================================
 */
@@ -271,24 +268,29 @@ void horz_line(int x, int y, int length, int colour)
 /*
 ===============================================================================
 Get key
-"Press any key to continue" etc...
+"Press any key to continue" in the splash screen
 ===============================================================================
 */
 
-int get_key(void)
+void get_key(void)
 {
 	int key;
 
 	key = getch();
 	if (key == ESC)
 	{
-		farfree(off_screen);
-		leave_mode13h();
+		free(snek);
 		exit(1);
 	}
-
-	return key;
 }
+
+/*
+===================================================================================
+Get integer
+Prompt the user for integer input and sanitize it
+==================================================================================
+*/
+
 
 /*
 ===============================================================================
@@ -344,9 +346,11 @@ void check_wrap(void)
 }
 
 /*
-===================================================================================
-Check if the key that is pressed should do something
-===================================================================================
+========================================================================
+Check if the key that is pressed should do something.
+Head of snek is the only pixel that needs to be moved here, the rest
+will follow automatically. This is used ingame ONLY.
+========================================================================
 */
 
 void check_key(void)
@@ -381,10 +385,8 @@ void check_key(void)
 					snek[0].dy = 0;
 				}
 				break;
-			case ESC:							
-				farfree(off_screen);
-				leave_mode13h();
-				exit(1);	
+			case ESC:
+				done = 1;
 			default: // not pressing anything etc
 				break;
 		}
@@ -393,35 +395,30 @@ void check_key(void)
 /*
 ===================================================================================
 Draw the player pixel
-This was made from the bounce_pixel function and it turned into the main game
-loop apparently...
+This was made from the now deprecated bounce_pixel() function and it turned into 
+the main game loop apparently...
 ==================================================================================
 */
 
 void draw_player(void)
 {
-	int done;
 	long next_time;
-	int keypress;
-	int snek_length = 5;
 
 	// for loop variables
-	int i; 		
-	int j;
-	int k;
+	int h, k, i;		
 
 	int collect_x;				// collectible location x
 	int collect_y;				// collectible location y
+	int collect_colour;			// collectible colour
 	int isCollectible = 0;		// is there a collectible already on screen?
 
-	// player's lead pixel location
-	snek[0].x = 150, snek[0].y = 90, snek[0].dx = 0, snek[0].dy = -1;
-
-	// KOKEITA
-	snek[1].x = 150, snek[1].y = 90, snek[1].dx = 0, snek[1].dy = -1;
-	snek[2].x = 150, snek[2].y = 91, snek[2].dx = 0, snek[2].dy = -1;
-	snek[3].x = 150, snek[3].y = 92, snek[3].dx = 0, snek[3].dy = -1;
-	snek[4].x = 150, snek[4].y = 93, snek[4].dx = 0, snek[4].dy = -1;
+	// save the initial snek location in memory
+	for(h = 0; h < snek_length; h++)
+	{
+		snek[h].x = 150, snek[h].y = 90 + h; 
+		snek[h].dx = 0, snek[h].dy = -1;
+		snek[h].colour = 5;
+	} 
 
 	done = 0; // flag for done
 	next_time = get_tick() + 1;  // a timer
@@ -433,21 +430,13 @@ void draw_player(void)
 		// screen without moving
 		if ( get_tick() >= next_time )
 			{
-				// draw snek tail
-			/*	for(k = 1; k > snek_length; k++)
-				{	
-					snek[k].x = snek[0].x + 1;
-					snek[k].y = snek[0].y + 1; 
-					snek[k].dx = snek[0].dx; 
-					snek[k].dy = snek[0].dy;
-				} */
 				// detect collision with player lead pixel and collectible
 				if(snek[0].x == collect_x && snek[0].y == collect_y)
 				{
 					// collectible is destroyed, make a new one on the next loop
 					isCollectible = 0;
-
 					snek_length++;
+					snek[snek_length -1].colour = collect_colour;
 				}
 
 				// check for user input
@@ -456,48 +445,16 @@ void draw_player(void)
 					check_key();
 				}
 
-				// collecting a collectible -> this step will be skipped
-				if(isCollectible)
-				{
-					// remove old snek tail IS THIS STILL NEEDED?
-					draw_pixel(snek[snek_length - 1].x, snek[snek_length -1].y, 0);
-				}
-				
+				// remove old snek tail
+				draw_pixel(snek[snek_length - 1].x, snek[snek_length -1].y, 0);
+
+				// move snek pixel info one step backwards so that each pixel
+				// follows the one that came before it
 				for(k = snek_length - 1; k > 0; k--)
 				{
-					snek[k].x = snek[k - 1].x;
-					snek[k].y = snek[k - 1].y;
-					snek[k].dx = snek[k - 1].dx;
-					snek[k].dy = snek[k - 1].dy;
-					
-
-					/*
-
-					KOKEITA
-					snek[4].x = snek[3].x;
-					snek[4].y = snek[3].y;
-					snek[4].dx = snek[3].dx;
-					snek[4].dy = snek[3].dy;
-
-					snek[3].x = snek[2].x;
-					snek[3].y = snek[2].y;
-					snek[3].dx = snek[2].dx;
-					snek[3].dy = snek[2].dy;
-
-					snek[2].x = snek[1].x;
-					snek[2].y = snek[1].y;
-					snek[2].dx = snek[1].dx;
-					snek[2].dy = snek[1].dy;				
-
-					snek[1].x = snek[0].x;
-					snek[1].y = snek[0].y;
-					snek[1].dx = snek[0].dx;
-					snek[1].dy = snek[0].dy;
-					*/
+					snek[k].x = snek[k - 1].x, snek[k].y = snek[k - 1].y;
+					snek[k].dx = snek[k - 1].dx, snek[k].dy = snek[k - 1].dy;
 				}
-
-
-
 
 				// move snek[0] of snek
 				snek[0].x += snek[0].dx;
@@ -514,16 +471,17 @@ void draw_player(void)
 			// draw a collectible in a random location and store its location
 			collect_x = random(screen_width);
 			collect_y = random(screen_height);
-			draw_pixel(collect_x, collect_y, 32 + random(48));
+			collect_colour = 32 + random(48);
+			draw_pixel(collect_x, collect_y, collect_colour);
 
 			// now there's a collectible so don't draw any new ones
 			isCollectible = 1;		
 		}
 
-		// draw snek
+		// draw snek (both head and tail)
 		for(i = 0; i < snek_length; i++)
 		{
-			draw_pixel(snek[i].x, snek[i].y, 5);
+			draw_pixel(snek[i].x, snek[i].y, snek[i].colour);
 		}
 
 			update_buffer();
@@ -538,37 +496,42 @@ Main loop
 
 void main(void)
 {
-	/*long z;*/
-
 	// allocate memory for the snek. This will be lengthened if necessary
 	snek = malloc((64000) * sizeof(struct pixel));
 
-	// fill the snek array with zeroes 
-	/*for(z = 0; z < 64000; z++)
-	{
-		snek[z].x = 0;
-		snek[z].y = 0;
-	} */
-
-	
-
-	srand(time(NULL)); 			// seed the random generator
+	// seed the random generator
+	srand(time(NULL)); 			
 
 	printf("Welcome to Pekka's VGA experiment!\n");
 	printf("All lefts reversed and so forth\n");
+	printf("\n");
+	printf("This is a hardcore snake game with wrapping borders\n");
+	printf("Use the arrow keys to move and pause button to pause\n");
+	printf("You can always escape the game by pressing ESC\n\n");
 	printf("Press ESC to exit, or press any other key to continue\n");
 
 	get_key();
+
+	//printf("How long would you like the initial snek to be?\n");
+	
+	snek_length = 50;
+
+	//get_integer();
 
 	init_video_mode();
 
 	// main game loop is this one
 	draw_player();
 
+	// once you press esc in draw_player(), program continues here
 	leave_mode13h();
 
 	// free memory
 	free(snek);
 	farfree(off_screen);
+
+	printf("Thanks for playing!\n");
+	printf("Made with Borland Turbo C++ 3.0 in 2019\n");
+	printf("-Pekka\n");
 
 }

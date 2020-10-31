@@ -37,11 +37,11 @@ Port to SDL or something similar?
 */
 
 #include <stdio.h>
-#include <conio.h>
+#include <conio.h> 
 #include <malloc.h>
 #include <string.h>
 #include <stdlib.h>
-#include <dos.h>
+#include <dos.h> 
 #include <time.h>
 
 #define INPUT_STATUS_0 0x3da
@@ -166,6 +166,8 @@ on the VGA card. This returns a number of flags about the VGA's current state.
 Bit 3 tells if it is in a vertical blank (2^3 = 8). We first wait until it is
 NOT blanking, to make sure we get a full vertical blank time for our copy. 
 Then we wait for a vertical blank.
+
+Mode 13h doesn't support page flipping so double buffering is the way to go.
 ===============================================================================
 */
 

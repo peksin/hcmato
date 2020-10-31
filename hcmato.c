@@ -20,7 +20,6 @@ Compiled inside DOSBox with Borland Turbo C++ 3.0
 TODO:
 
 -Sanitize snek length input
--Make the snek multicoloured based on the collectibles
 -Add snek collision with itself
 -Prevent game from drawing collectibles on top of the snek
 
@@ -87,7 +86,7 @@ unsigned int screen_size;
 int old_mode;					// old video mode before we change it
 
 int done;						// flag for done
-long int snek_length = 5;		// Length of snek
+long int snek_length = 5;		// length of snek
 /*
 =================================================================================
 Get TICK

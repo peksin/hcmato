@@ -1,5 +1,7 @@
 # hcmato
 
+![screenshot](https://raw.githubusercontent.com/peksin/hcmato/master/screen.png?raw=true)
+
 This is someday supposed to be a hardcore snake game. I started out trying to
 learn 16 bit DOS graphics programming with "Alex Russell's Dos Game Programming
 in C for Beginners". The idea was to learn how to draw graphics without the aid 

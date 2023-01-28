@@ -177,7 +177,7 @@ int init_video_mode(void)
 
 	if (off_screen)
 	{
-		screen = MK_FP (0xa000, 0);
+		screen = MK_FP (0xa000, 0); // create a far pointer to video memory
 		screen_width = 320;
 		screen_height = 200;
 		screen_size = 64000u;
